@@ -980,13 +980,13 @@ func (n *network) Delete(options ...NetworkDeleteOption) error {
 }
 
 // This function gets called in 3 ways:
-//  * Delete() -- (false, false)
-//      remove if endpoint count == 0 or endpoint count == 1 and
-//      there is a load balancer IP
-//  * Delete(libnetwork.NetworkDeleteOptionRemoveLB) -- (false, true)
-//      remove load balancer and network if endpoint count == 1
-//  * controller.networkCleanup() -- (true, true)
-//      remove the network no matter what
+//   - Delete() -- (false, false)
+//     remove if endpoint count == 0 or endpoint count == 1 and
+//     there is a load balancer IP
+//   - Delete(libnetwork.NetworkDeleteOptionRemoveLB) -- (false, true)
+//     remove load balancer and network if endpoint count == 1
+//   - controller.networkCleanup() -- (true, true)
+//     remove the network no matter what
 func (n *network) delete(force bool, rmLBEndpoint bool) error {
 	n.Lock()
 	c := n.ctrlr
@@ -1145,7 +1145,6 @@ func (n *network) addEndpoint(ep *endpoint) error {
 }
 
 func (n *network) CreateEndpoint(name string, options ...EndpointOption) (Endpoint, error) {
-	var err error
 	if !config.IsValidName(name) {
 		return nil, ErrInvalidName(name)
 	}
@@ -1154,8 +1153,12 @@ func (n *network) CreateEndpoint(name string, options ...EndpointOption) (Endpoi
 		return nil, types.ForbiddenErrorf("cannot create endpoint on configuration-only network")
 	}
 
-	if _, err = n.EndpointByName(name); err == nil {
-		return nil, types.ForbiddenErrorf("endpoint with name %s already exists in network %s", name, n.Name())
+	if en, err := n.EndpointByName(name); err == nil {
+		if ep, err := n.getEndpointFromStore(en.ID()); err == nil {
+			if e := ep.deleteEndpoint(true); e != nil {
+				return nil, types.ForbiddenErrorf("endpoint existed and delete endpoint failed before create endpoint")
+			}
+		}
 	}
 
 	n.ctrlr.networkLocker.Lock(n.id)
